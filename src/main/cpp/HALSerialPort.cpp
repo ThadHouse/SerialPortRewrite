@@ -160,6 +160,11 @@ int HAL2_GetSerialFD(HAL_SerialPortHandle handle, int32_t* status) {
     return port->portId;
 }
 
+#define BAUDCASE(BAUD) \
+        case BAUD:      \
+            port->baudRate = B##BAUD ; \
+            break; 
+
 void HAL2_SetSerialBaudRate(HAL_SerialPortHandle handle, int32_t baud, int32_t *status)
 {
     auto port = serialPortHandles->Get(handle);
@@ -168,7 +173,42 @@ void HAL2_SetSerialBaudRate(HAL_SerialPortHandle handle, int32_t baud, int32_t *
         *status = HAL_HANDLE_ERROR;
         return;
     }
-    port->baudRate = baud;
+
+    switch (baud) {
+        BAUDCASE(50)
+        BAUDCASE(75)
+        BAUDCASE(110)
+        BAUDCASE(134)
+        BAUDCASE(150)
+        BAUDCASE(200)
+        BAUDCASE(300)
+        BAUDCASE(600)
+        BAUDCASE(1200)
+        BAUDCASE(1800)
+        BAUDCASE(2400)
+        BAUDCASE(4800)
+        BAUDCASE(9600)
+        BAUDCASE(19200)
+        BAUDCASE(38400)
+        BAUDCASE(57600)
+        BAUDCASE(115200)
+        BAUDCASE(230400)
+        BAUDCASE(460800)
+        BAUDCASE(500000)
+        BAUDCASE(576000)
+        BAUDCASE(921600)
+        BAUDCASE(1000000)
+        BAUDCASE(1152000)
+        BAUDCASE(1500000)
+        BAUDCASE(2000000)
+        BAUDCASE(2500000)
+        BAUDCASE(3000000)
+        BAUDCASE(3500000)
+        BAUDCASE(4000000)
+        default:
+            *status = PARAMETER_OUT_OF_RANGE;
+            return;
+    }
     cfsetospeed(&port->tty, static_cast<speed_t>(port->baudRate));
     cfsetispeed(&port->tty, static_cast<speed_t>(port->baudRate));
     tcsetattr(port->portId, TCSANOW, &port->tty);
@@ -394,19 +434,16 @@ int32_t HAL2_ReadSerial(HAL_SerialPortHandle handle, char *buffer, int32_t count
             loc++;
             // If buffer is full, return
             if (loc == count) {
-                std::cout << "Returning because full" << std::endl;
                 return loc;
             }
             // If terminating, and termination was hit return;
             if (port->termination && buf == port->terminationChar) {
-                std::cout << "Returning because termination" << std::endl;
                 return loc;
             }
         }
         else
         {
             // If nothing read, timeout
-            std::cout << "Returning because timeout" << std::endl;
             return loc;
         }
     } while (true);
