@@ -10,6 +10,8 @@ HAL_SerialPortHandle HAL2_InitializeSerialPort(HAL_SerialPort port, int32_t* sta
 HAL_SerialPortHandle HAL2_InitializeSerialPortDirect(HAL_SerialPort port, const char* portName, int32_t* status);
 void HAL2_CloseSerial(HAL_SerialPortHandle handle, int32_t* status);
 
+int HAL2_GetSerialFD(HAL_SerialPortHandle handle, int32_t* status);
+
 void HAL2_SetSerialBaudRate(HAL_SerialPortHandle handle, int32_t baud, int32_t* status);
 
 void HAL2_SetSerialDataBits(HAL_SerialPortHandle handle, int32_t bits, int32_t* status);

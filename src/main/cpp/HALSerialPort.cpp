@@ -29,9 +29,6 @@ struct SerialPort
     struct termios tty;
     int baudRate;
 
-    int readBufferSize = 0;
-    int writeBufferSize = 0;
-
     double timeout = 0;
 
     bool termination = false;
@@ -123,6 +120,7 @@ HAL_SerialPortHandle HAL2_InitializeSerialPortDirect(HAL_SerialPort port, const 
     serialPort->tty.c_cflag |= CREAD | CLOCAL;
 
     serialPort->tty.c_lflag &= ~(ICANON | ECHO | ISIG);
+    serialPort->tty.c_iflag &= ~(IXON | IXOFF | IXANY);
     /* Raw output mode, sends the raw and unprocessed data  ( send as it is).
     * If it is in canonical mode and sending new line char then CR
     * will be added as prefix and send as CR LF
@@ -152,50 +150,162 @@ void HAL2_CloseSerial(HAL_SerialPortHandle handle, int32_t *status)
     *status = 0;
 }
 
+int HAL2_GetSerialFD(HAL_SerialPortHandle handle, int32_t* status) {
+    auto port = serialPortHandles->Get(handle);
+    if (!port)
+    {
+        *status = HAL_HANDLE_ERROR;
+        return -1;
+    }
+    return port->portId;
+}
+
 void HAL2_SetSerialBaudRate(HAL_SerialPortHandle handle, int32_t baud, int32_t *status)
 {
-    int baudRate = -1;
-    switch (baud)
+    auto port = serialPortHandles->Get(handle);
+    if (!port)
     {
-    case 9600:
-        baudRate = B9600;
-        break;
-    case 19200:
-        baudRate = B19200;
-        break;
-    case 38400:
-        baudRate = B38400;
-        break;
-    case 57600:
-        baudRate = B57600;
-        break;
-    case 115200:
-        baudRate = B115200;
-        break;
-    default:
-        *status = PARAMETER_OUT_OF_RANGE;
+        *status = HAL_HANDLE_ERROR;
         return;
     }
+    port->baudRate = baud;
+    cfsetospeed(&port->tty, static_cast<speed_t>(port->baudRate));
+    cfsetispeed(&port->tty, static_cast<speed_t>(port->baudRate));
+    tcsetattr(port->portId, TCSANOW, &port->tty);
 }
 
 void HAL2_SetSerialDataBits(HAL_SerialPortHandle handle, int32_t bits, int32_t *status)
 {
+    auto port = serialPortHandles->Get(handle);
+    if (!port)
+    {
+        *status = HAL_HANDLE_ERROR;
+        return;
+    }
+
+    int bitFlag = -1;
+    switch (bits) {
+        case 5:
+            bitFlag = CS5;
+            break;
+        case 6:
+            bitFlag = CS6;
+            break;
+        case 7:
+            bitFlag = CS7;
+            break;
+        case 8:
+            bitFlag = CS8;
+            break;
+        default:
+            *status = PARAMETER_OUT_OF_RANGE;
+            return;
+    }
+    
+    port->tty.c_cflag &= ~CSIZE;
+    port->tty.c_cflag |= bitFlag;
+
+    tcsetattr(port->portId, TCSANOW, &port->tty);
 }
 
 void HAL2_SetSerialParity(HAL_SerialPortHandle handle, int32_t parity, int32_t *status)
 {
+    auto port = serialPortHandles->Get(handle);
+    if (!port)
+    {
+        *status = HAL_HANDLE_ERROR;
+        return;
+    }
+
+    switch (parity) {
+        case 0: // None
+            port->tty.c_cflag &= ~PARENB;
+            port->tty.c_cflag &= ~CMSPAR;
+            break;
+        case 1: // Odd
+            port->tty.c_cflag |= PARENB;
+            port->tty.c_cflag &= ~CMSPAR;
+            port->tty.c_cflag &= ~PARODD;
+            break;
+        case 2: // Even
+            port->tty.c_cflag |= PARENB;
+            port->tty.c_cflag &= ~CMSPAR;
+            port->tty.c_cflag |= PARODD;
+            break;
+        case 3: // Mark
+            port->tty.c_cflag |= PARENB;
+            port->tty.c_cflag |= CMSPAR;
+            port->tty.c_cflag |= PARODD;
+            break;
+        case 4: // Space
+            port->tty.c_cflag |= PARENB;
+            port->tty.c_cflag |= CMSPAR;
+            port->tty.c_cflag &= ~PARODD;
+            break;
+        default:
+            *status = PARAMETER_OUT_OF_RANGE;
+            return;
+    }
+
+    tcsetattr(port->portId, TCSANOW, &port->tty);
 }
 
 void HAL2_SetSerialStopBits(HAL_SerialPortHandle handle, int32_t stopBits, int32_t *status)
 {
+    auto port = serialPortHandles->Get(handle);
+    if (!port)
+    {
+        *status = HAL_HANDLE_ERROR;
+        return;
+    }
+
+    switch (stopBits) {
+        case 10: // 1
+            port->tty.c_cflag &= ~CSTOPB;
+            break;
+        case 15: // 1.5
+        case 20: // 2
+            port->tty.c_cflag |= CSTOPB;
+            break;
+        default:
+            *status = PARAMETER_OUT_OF_RANGE;
+            return;
+    }
+
+    tcsetattr(port->portId, TCSANOW, &port->tty);
 }
 
 void HAL2_SetSerialWriteMode(HAL_SerialPortHandle handle, int32_t mode, int32_t *status)
 {
+    // This seems to be a no op on the NI serial port driver
 }
 
 void HAL2_SetSerialFlowControl(HAL_SerialPortHandle handle, int32_t flow, int32_t *status)
 {
+    auto port = serialPortHandles->Get(handle);
+    if (!port)
+    {
+        *status = HAL_HANDLE_ERROR;
+        return;
+    }
+
+    switch (flow) {
+        case 0:
+            port->tty.c_cflag &= ~CRTSCTS;
+            break;
+        case 1: 
+            port->tty.c_cflag &= ~CRTSCTS;
+            port->tty.c_iflag &= IXON | IXOFF;
+            break;
+        case 2:
+            port->tty.c_cflag |= CRTSCTS;
+            break;
+        default:
+            *status = PARAMETER_OUT_OF_RANGE;
+            return;
+    }
+
+    tcsetattr(port->portId, TCSANOW, &port->tty);
 }
 
 void HAL2_SetSerialTimeout(HAL_SerialPortHandle handle, double timeout, int32_t *status)
@@ -236,26 +346,12 @@ void HAL2_DisableSerialTermination(HAL_SerialPortHandle handle, int32_t *status)
 
 void HAL2_SetSerialReadBufferSize(HAL_SerialPortHandle handle, int32_t size, int32_t *status)
 {
-    auto port = serialPortHandles->Get(handle);
-    if (!port)
-    {
-        *status = HAL_HANDLE_ERROR;
-        return;
-    }
-
-    port->readBufferSize = size;
+    // NO OP currently
 }
 
 void HAL2_SetSerialWriteBufferSize(HAL_SerialPortHandle handle, int32_t size, int32_t *status)
 {
-    auto port = serialPortHandles->Get(handle);
-    if (!port)
-    {
-        *status = HAL_HANDLE_ERROR;
-        return;
-    }
-
-    port->writeBufferSize = size;
+    // NO OP currently
 }
 
 int32_t HAL2_GetSerialBytesReceived(HAL_SerialPortHandle handle, int32_t *status)
@@ -297,15 +393,20 @@ int32_t HAL2_ReadSerial(HAL_SerialPortHandle handle, char *buffer, int32_t count
             buffer[loc] = buf;
             loc++;
             // If buffer is full, return
-            if (loc == count)
+            if (loc == count) {
+                std::cout << "Returning because full" << std::endl;
                 return loc;
+            }
             // If terminating, and termination was hit return;
-            if (port->termination && buf == port->terminationChar)
+            if (port->termination && buf == port->terminationChar) {
+                std::cout << "Returning because termination" << std::endl;
                 return loc;
+            }
         }
         else
         {
             // If nothing read, timeout
+            std::cout << "Returning because timeout" << std::endl;
             return loc;
         }
     } while (true);
@@ -331,6 +432,7 @@ int32_t HAL2_WriteSerial(HAL_SerialPortHandle handle, const char *buffer, int32_
             spot += written;
         }
     } while (spot < count);
+    return spot;
 }
 
 void HAL2_FlushSerial(HAL_SerialPortHandle handle, int32_t *status)
